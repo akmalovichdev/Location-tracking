@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Геолокация</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.active {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .user-id {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Live Геолокация</h1>
+        <div id="status" class="status">Инициализация...</div>
+        <div>Ваш ID: <span id="userId" class="user-id"></span></div>
+    </div>
+
+    <script>
+        const user_id = new URLSearchParams(window.location.search).get('name') || localStorage.getItem('user_id') || generateRandomId();
+        document.getElementById('userId').textContent = user_id;
+
+        function generateRandomId() {
+            let id = Math.random().toString(36).substring(7);
+            localStorage.setItem('user_id', id);
+            return id;
+        }
+
+        function updateStatus(message, isError = false) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + (isError ? 'error' : 'active');
+        }
+
+        function sendLocation(lat, lon) {
+            fetch('/api/update_location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: user_id, latitude: lat, longitude: lon })
+            })
+            .then(response => response.json())
+            .then(data => {
+                updateStatus('Местоположение обновлено: ' + new Date().toLocaleTimeString());
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                updateStatus('Ошибка при отправке данных', true);
+            });
+        }
+
+        function trackLocation() {
+            if (navigator.geolocation) {
+                updateStatus('Отслеживание начато');
+                navigator.geolocation.watchPosition(
+                    position => {
+                        sendLocation(position.coords.latitude, position.coords.longitude);
+                    },
+                    error => {
+                        console.error("Ошибка геолокации:", error);
+                        updateStatus('Ошибка геолокации: ' + error.message, true);
+                    },
+                    { 
+                        enableHighAccuracy: true,
+                        maximumAge: 1000,
+                        timeout: 5000
+                    }
+                );
+            } else {
+                updateStatus('Ваш браузер не поддерживает геолокацию', true);
+            }
+        }
+
+        trackLocation();
+    </script>
+</body>
+</html> 

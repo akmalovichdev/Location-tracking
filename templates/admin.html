@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления геолокацией</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body, html { 
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            font-family: Arial, sans-serif;
+        }
+        #map { 
+            flex: 1; 
+            width: 100%; 
+        }
+        #control-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            max-width: 350px;
+        }
+        #user-list {
+            max-height: 250px;
+            overflow-y: auto;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .user-item { 
+            cursor: pointer; 
+            padding: 10px; 
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+        .user-item:hover { 
+            background: #f8f9fa; 
+        }
+        .user-item.selected {
+            background: #e3f2fd;
+            border-left: 3px solid #007bff;
+        }
+        button { 
+            width: 100%; 
+            margin-top: 5px; 
+            padding: 10px; 
+            cursor: pointer; 
+            border: none; 
+            border-radius: 5px; 
+            background: #007bff; 
+            color: white; 
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        button:hover { 
+            background: #0056b3; 
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        #chart-container { 
+            display: none; 
+            background: white; 
+            padding: 15px; 
+            border-radius: 8px; 
+            position: absolute; 
+            top: 10px; 
+            right: 10px; 
+            z-index: 1000; 
+            width: 400px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="control-panel">
+        <button onclick="window.location.href='/'">Назад</button>
+        <button onclick="updateUsers()">Обновить данные</button>
+        <button onclick="resetView()">Сбросить карту</button>
+        <button onclick="deleteAllUsers()" class="danger">Удалить всех пользователей</button>
+        
+        <div class="input-group">
+            <input type="text" id="userNameInput" placeholder="Введите имя пользователя">
+            <button onclick="shareLocation()">Поделиться ссылкой</button>
+        </div>
+
+        <h3>Пользователи:</h3>
+        <div id="user-list">Загрузка...</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="chart-container">
+        <h3>История передвижений</h3>
+        <canvas id="locationChart"></canvas>
+        <button onclick="closeChart()">Закрыть</button>
+    </div>
+
+    <script>
+        var map = L.map('map').setView([39.6548, 66.9750], 13);
+        var markers = {};
+        var paths = {};
+        var userList = document.getElementById("user-list");
+        var chartContainer = document.getElementById("chart-container");
+        var ctx = document.getElementById("locationChart").getContext("2d");
+        var locationChart = new Chart(ctx, {
+            type: 'line',
+            data: { 
+                labels: [], 
+                datasets: [{ 
+                    label: "Перемещение", 
+                    data: [], 
+                    borderColor: 'blue', 
+                    borderWidth: 2,
+                    fill: false
+                }] 
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        function resetView() { 
+            map.setView([39.6548, 66.9750], 13, { animate: true }); 
+        }
+
+        function updateUsers() {
+            fetch('/api/get_locations')
+                .then(response => response.json())
+                .then(data => {
+                    userList.innerHTML = "";
+                    for (let user in data) {
+                        let history = data[user];
+                        let latest = history[history.length - 1];
+                        let latlng = [latest.latitude, latest.longitude];
+
+                        let userItem = document.createElement("div");
+                        userItem.classList.add("user-item");
+                        userItem.innerHTML = `👤 ${user} <br> ⏳ <b>Обновлено:</b> ${latest.timestamp}`;
+                        userItem.onclick = () => showUserHistory(user);
+                        userList.appendChild(userItem);
+
+                        if (markers[user]) {
+                            markers[user].setLatLng(latlng);
+                            markers[user].bindPopup(`<b>${user}</b><br>Последнее обновление: ${latest.timestamp}`);
+                        } else {
+                            let marker = L.marker(latlng, { title: user }).addTo(map)
+                                .bindPopup(`<b>${user}</b><br>Последнее обновление: ${latest.timestamp}`)
+                                .on('click', () => showUserHistory(user));
+                            markers[user] = marker;
+                        }
+                    }
+                })
+                .catch(error => console.error('Ошибка:', error));
+        }
+
+        function showUserHistory(userId) {
+            fetch(`/api/get_user_history?user_id=${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    let labels = data.map(d => d.timestamp);
+                    let coordinates = data.map(d => ({ x: d.timestamp, y: parseFloat(d.latitude) }));
+                    let latlngs = data.map(d => [d.latitude, d.longitude]);
+
+                    locationChart.data.labels = labels;
+                    locationChart.data.datasets[0].data = coordinates;
+                    locationChart.update();
+                    chartContainer.style.display = "block";
+
+                    if (paths[userId]) {
+                        map.removeLayer(paths[userId]);
+                    }
+
+                    let polyline = L.polyline(latlngs, { color: 'red', weight: 3 }).addTo(map);
+                    paths[userId] = polyline;
+
+                    let lastLocation = latlngs[latlngs.length - 1];
+                    map.setView(lastLocation, 15, { animate: true });
+                })
+                .catch(error => console.error('Ошибка:', error));
+        }
+
+        function closeChart() { 
+            chartContainer.style.display = "none"; 
+        }
+
+        function deleteAllUsers() {
+            if (!confirm('Вы уверены, что хотите удалить всех пользователей? Это действие нельзя отменить.')) {
+                return;
+            }
+
+            fetch('/api/delete_all_users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Все пользователи успешно удалены');
+                for (let user in markers) {
+                    map.removeLayer(markers[user]);
+                }
+                markers = {};
+                userList.innerHTML = "Нет пользователей";
+                updateUsers();
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                alert('Произошла ошибка при удалении пользователей');
+            });
+        }
+
+        function shareLocation() {
+            const userName = document.getElementById('userNameInput').value.trim();
+            if (!userName) {
+                alert('Пожалуйста, введите имя пользователя');
+                return;
+            }
+            const shareLink = `${window.location.origin}/?name=${encodeURIComponent(userName)}`;
+            
+            navigator.clipboard.writeText(shareLink).then(() => {
+                const button = document.querySelector('.input-group button');
+                const originalText = button.textContent;
+                button.textContent = 'Скопировано!';
+                button.style.backgroundColor = '#28a745';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.backgroundColor = '#007bff';
+                }, 2000);
+            }).catch(err => {
+                console.error('Ошибка при копировании:', err);
+                alert('Не удалось скопировать ссылку. Пожалуйста, скопируйте вручную: ' + shareLink);
+            });
+        }
+
+        setInterval(updateUsers, 5000);
+        updateUsers();
+    </script>
+</body>
+</html> 
