@@ -64,22 +64,6 @@
             status.className = 'status ' + (isError ? 'error' : 'active');
         }
 
-        function sendLocation(lat, lon) {
-            fetch('/api/update_location', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: user_id, latitude: lat, longitude: lon })
-            })
-            .then(response => response.json())
-            .then(data => {
-                updateStatus('Местоположение обновлено: ' + new Date().toLocaleTimeString());
-            })
-            .catch(error => {
-                console.error('Ошибка:', error);
-                updateStatus('Ошибка при отправке данных', true);
-            });
-        }
-
         function trackLocation() {
             if (navigator.geolocation) {
                 updateStatus('Отслеживание начато');
@@ -89,7 +73,22 @@
                     },
                     error => {
                         console.error("Ошибка геолокации:", error);
-                        updateStatus('Ошибка геолокации: ' + error.message, true);
+                        let errorMessage = 'Ошибка геолокации: ';
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage += 'Доступ запрещен. Пожалуйста, разрешите доступ к геолокации в настройках браузера.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage += 'Информация о местоположении недоступна.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage += 'Превышено время ожидания запроса местоположения.';
+                                break;
+                            case error.UNKNOWN_ERROR:
+                                errorMessage += 'Неизвестная ошибка.';
+                                break;
+                        }
+                        updateStatus(errorMessage, true);
                     },
                     { 
                         enableHighAccuracy: true,
@@ -100,6 +99,29 @@
             } else {
                 updateStatus('Ваш браузер не поддерживает геолокацию', true);
             }
+        }
+
+        function sendLocation(lat, lon) {
+            const protocol = window.location.protocol;
+            const host = window.location.host;
+            const apiUrl = `${protocol}//${host}/api/update_location`;
+
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ user_id: user_id, latitude: lat, longitude: lon })
+            })
+            .then(response => response.json())
+            .then(data => {
+                updateStatus('Местоположение обновлено: ' + new Date().toLocaleTimeString());
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                updateStatus('Ошибка при отправке данных', true);
+            });
         }
 
         trackLocation();

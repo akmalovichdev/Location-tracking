@@ -157,7 +157,11 @@
         }
 
         function updateUsers() {
-            fetch('/api/get_locations')
+            fetch('/api/get_locations', {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
                 .then(response => response.json())
                 .then(data => {
                     userList.innerHTML = "";
@@ -187,7 +191,11 @@
         }
 
         function showUserHistory(userId) {
-            fetch(`/api/get_user_history?user_id=${userId}`)
+            fetch(`/api/get_user_history?user_id=${userId}`, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
                 .then(response => response.json())
                 .then(data => {
                     let labels = data.map(d => d.timestamp);
@@ -224,7 +232,8 @@
             fetch('/api/delete_all_users', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 }
             })
             .then(response => response.json())
@@ -251,20 +260,42 @@
             }
             const shareLink = `${window.location.origin}/?name=${encodeURIComponent(userName)}`;
             
-            navigator.clipboard.writeText(shareLink).then(() => {
-                const button = document.querySelector('.input-group button');
-                const originalText = button.textContent;
-                button.textContent = 'Скопировано!';
-                button.style.backgroundColor = '#28a745';
-                
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.backgroundColor = '#007bff';
-                }, 2000);
-            }).catch(err => {
-                console.error('Ошибка при копировании:', err);
-                alert('Не удалось скопировать ссылку. Пожалуйста, скопируйте вручную: ' + shareLink);
-            });
+            // Создаем временный input элемент
+            const tempInput = document.createElement('input');
+            tempInput.value = shareLink;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            tempInput.setSelectionRange(0, 99999); // Для мобильных устройств
+            
+            try {
+                // Пробуем использовать современный API
+                navigator.clipboard.writeText(shareLink).then(() => {
+                    showCopySuccess();
+                }).catch(() => {
+                    // Если не получилось, используем старый метод
+                    document.execCommand('copy');
+                    showCopySuccess();
+                });
+            } catch (err) {
+                // Если оба метода не сработали, используем старый метод
+                document.execCommand('copy');
+                showCopySuccess();
+            }
+            
+            // Удаляем временный input
+            document.body.removeChild(tempInput);
+        }
+
+        function showCopySuccess() {
+            const button = document.querySelector('.input-group button');
+            const originalText = button.textContent;
+            button.textContent = 'Скопировано!';
+            button.style.backgroundColor = '#28a745';
+            
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.backgroundColor = '#007bff';
+            }, 2000);
         }
 
         setInterval(updateUsers, 5000);
