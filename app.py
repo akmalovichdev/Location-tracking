@@ -3,7 +3,6 @@ from flask_cors import CORS
 import time
 import json
 import os
-import ssl
 
 app = Flask(__name__)
 # Настраиваем CORS для всех маршрутов
@@ -89,16 +88,8 @@ def delete_all_users():
     return jsonify({"message": "All users deleted successfully"})
 
 if __name__ == '__main__':
-    # Пути к SSL сертификатам
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    ssl_context.load_cert_chain(
-        certfile='/etc/letsencrypt/live/hokimiyat.samit.global/fullchain.pem',
-        keyfile='/etc/letsencrypt/live/hokimiyat.samit.global/privkey.pem'
-    )
-    
     app.run(
         host="0.0.0.0",
-        port=5555,
-        debug=True,
-        ssl_context=ssl_context
+        port=8888,
+        debug=True
     ) 
