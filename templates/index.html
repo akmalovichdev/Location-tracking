@@ -39,6 +39,23 @@
             border-radius: 4px;
             margin: 10px 0;
         }
+        #camera-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        #camera-preview {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        #photo-preview {
+            display: none;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            margin: 10px auto;
+        }
     </style>
 </head>
 <body>
@@ -46,11 +63,40 @@
         <h1>Live Геолокация</h1>
         <div id="status" class="status">Инициализация...</div>
         <div>Ваш ID: <span id="userId" class="user-id"></span></div>
+        
+        <div id="camera-container">
+            <video id="camera-preview" autoplay playsinline></video>
+            <img id="photo-preview" alt="Фото">
+        </div>
     </div>
 
     <script>
         const user_id = new URLSearchParams(window.location.search).get('name') || localStorage.getItem('user_id') || generateRandomId();
         document.getElementById('userId').textContent = user_id;
+
+        let stream = null;
+        let photoUrl = null;
+
+        async function initializeCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                const video = document.getElementById('camera-preview');
+                video.srcObject = stream;
+                updateStatus('Камера инициализирована');
+                
+                // Делаем фото автоматически через 2 секунды после инициализации камеры
+                setTimeout(capturePhoto, 2000);
+            } catch (error) {
+                console.error('Ошибка доступа к камере:', error);
+                updateStatus('Ошибка доступа к камере', true);
+            }
+        }
 
         function generateRandomId() {
             let id = Math.random().toString(36).substring(7);
@@ -62,6 +108,41 @@
             const status = document.getElementById('status');
             status.textContent = message;
             status.className = 'status ' + (isError ? 'error' : 'active');
+        }
+
+        async function capturePhoto() {
+            const video = document.getElementById('camera-preview');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            const photoPreview = document.getElementById('photo-preview');
+            photoPreview.src = canvas.toDataURL('image/jpeg');
+            photoPreview.style.display = 'block';
+            
+            // Останавливаем камеру после фото
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Отправляем фото на сервер
+            const formData = new FormData();
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+            formData.append('photo', blob, 'photo.jpg');
+
+            try {
+                const response = await fetch('/api/upload_photo', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                photoUrl = data.photo_url;
+                updateStatus('Фото успешно загружено');
+            } catch (error) {
+                console.error('Ошибка загрузки фото:', error);
+                updateStatus('Ошибка загрузки фото', true);
+            }
         }
 
         function trackLocation() {
@@ -112,7 +193,12 @@
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({ user_id: user_id, latitude: lat, longitude: lon })
+                body: JSON.stringify({ 
+                    user_id: user_id, 
+                    latitude: lat, 
+                    longitude: lon,
+                    photo_url: photoUrl 
+                })
             })
             .then(response => response.json())
             .then(data => {
@@ -124,6 +210,8 @@
             });
         }
 
+        // Инициализация
+        initializeCamera();
         trackLocation();
     </script>
 </body>

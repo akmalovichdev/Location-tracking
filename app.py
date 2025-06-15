@@ -1,8 +1,9 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 import time
 import json
 import os
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 # Настраиваем CORS для всех маршрутов
@@ -10,6 +11,13 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Путь к файлу для хранения данных
 DATA_FILE = 'location_data.json'
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -41,6 +49,7 @@ def update_location():
     user_id = data.get('user_id')
     lat = data.get('latitude')
     lon = data.get('longitude')
+    photo_url = data.get('photo_url')  # Получаем URL фото
 
     if not user_id or not lat or not lon:
         return jsonify({"error": "Missing data"}), 400
@@ -50,11 +59,18 @@ def update_location():
     if user_id not in locations:
         locations[user_id] = []
 
-    locations[user_id].append({
+    # Создаем запись с фото только если оно есть
+    location_data = {
         "latitude": lat,
         "longitude": lon,
         "timestamp": timestamp
-    })
+    }
+    
+    # Добавляем photo_url только если он не None
+    if photo_url:
+        location_data["photo_url"] = photo_url
+
+    locations[user_id].append(location_data)
 
     # Сохраняем данные в файл
     save_data(locations)
@@ -86,6 +102,35 @@ def delete_all_users():
     locations.clear()
     save_data(locations)  # Сохраняем пустые данные
     return jsonify({"message": "All users deleted successfully"})
+
+@app.route('/api/upload_photo', methods=['POST', 'OPTIONS'])
+def upload_photo():
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if 'photo' not in request.files:
+        return jsonify({"error": "No photo file"}), 400
+
+    file = request.files['photo']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        # Добавляем timestamp к имени файла для уникальности
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}_{filename}"
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        return jsonify({
+            "message": "Photo uploaded successfully",
+            "photo_url": f"/uploads/{filename}"
+        })
+
+    return jsonify({"error": "File type not allowed"}), 400
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
     app.run(

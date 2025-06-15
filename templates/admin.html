@@ -42,6 +42,9 @@
             padding: 10px; 
             border-bottom: 1px solid #eee;
             transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .user-item:hover { 
             background: #f8f9fa; 
@@ -49,6 +52,16 @@
         .user-item.selected {
             background: #e3f2fd;
             border-left: 3px solid #007bff;
+        }
+        .user-photo {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #007bff;
+        }
+        .user-info {
+            flex: 1;
         }
         button { 
             width: 100%; 
@@ -92,6 +105,12 @@
             border: 1px solid #ddd;
             border-radius: 5px;
             margin-bottom: 5px;
+        }
+        .photo-popup {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -172,16 +191,43 @@
 
                         let userItem = document.createElement("div");
                         userItem.classList.add("user-item");
-                        userItem.innerHTML = `👤 ${user} <br> ⏳ <b>Обновлено:</b> ${latest.timestamp}`;
+                        
+                        let photoUrl = null;
+                        for (let i = history.length - 1; i >= 0; i--) {
+                            if (history[i].photo_url) {
+                                photoUrl = history[i].photo_url;
+                                break;
+                            }
+                        }
+                        
+                        let userInfo = document.createElement("div");
+                        userInfo.classList.add("user-info");
+                        userInfo.innerHTML = `👤 ${user} <br> ⏳ <b>Обновлено:</b> ${latest.timestamp}`;
+                        
+                        let photo = document.createElement("img");
+                        photo.classList.add("user-photo");
+                        photo.src = photoUrl || 'https://via.placeholder.com/50';
+                        photo.alt = `Фото ${user}`;
+                        
+                        userItem.appendChild(photo);
+                        userItem.appendChild(userInfo);
                         userItem.onclick = () => showUserHistory(user);
                         userList.appendChild(userItem);
 
                         if (markers[user]) {
                             markers[user].setLatLng(latlng);
-                            markers[user].bindPopup(`<b>${user}</b><br>Последнее обновление: ${latest.timestamp}`);
+                            let popupContent = `<b>${user}</b><br>Последнее обновление: ${latest.timestamp}`;
+                            if (photoUrl) {
+                                popupContent += `<br><img src="${photoUrl}" class="photo-popup">`;
+                            }
+                            markers[user].setPopupContent(popupContent);
                         } else {
+                            let popupContent = `<b>${user}</b><br>Последнее обновление: ${latest.timestamp}`;
+                            if (photoUrl) {
+                                popupContent += `<br><img src="${photoUrl}" class="photo-popup">`;
+                            }
                             let marker = L.marker(latlng, { title: user }).addTo(map)
-                                .bindPopup(`<b>${user}</b><br>Последнее обновление: ${latest.timestamp}`)
+                                .bindPopup(popupContent)
                                 .on('click', () => showUserHistory(user));
                             markers[user] = marker;
                         }
@@ -253,51 +299,20 @@
         }
 
         function shareLocation() {
-            const userName = document.getElementById('userNameInput').value.trim();
+            let userName = document.getElementById("userNameInput").value.trim();
             if (!userName) {
-                alert('Пожалуйста, введите имя пользователя');
+                alert("Пожалуйста, введите имя пользователя");
                 return;
             }
-            const shareLink = `${window.location.origin}/?name=${encodeURIComponent(userName)}`;
-            
-            // Создаем временный input элемент
-            const tempInput = document.createElement('input');
-            tempInput.value = shareLink;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            tempInput.setSelectionRange(0, 99999); // Для мобильных устройств
-            
-            try {
-                // Пробуем использовать современный API
-                navigator.clipboard.writeText(shareLink).then(() => {
-                    showCopySuccess();
-                }).catch(() => {
-                    // Если не получилось, используем старый метод
-                    document.execCommand('copy');
-                    showCopySuccess();
-                });
-            } catch (err) {
-                // Если оба метода не сработали, используем старый метод
-                document.execCommand('copy');
-                showCopySuccess();
-            }
-            
-            // Удаляем временный input
-            document.body.removeChild(tempInput);
+            let url = `${window.location.origin}/?name=${encodeURIComponent(userName)}`;
+            navigator.clipboard.writeText(url).then(() => {
+                alert("Ссылка скопирована в буфер обмена!");
+            }).catch(err => {
+                alert("Не удалось скопировать ссылку. Пожалуйста, скопируйте её вручную:\n" + url);
+            });
         }
 
-        function showCopySuccess() {
-            const button = document.querySelector('.input-group button');
-            const originalText = button.textContent;
-            button.textContent = 'Скопировано!';
-            button.style.backgroundColor = '#28a745';
-            
-            setTimeout(() => {
-                button.textContent = originalText;
-                button.style.backgroundColor = '#007bff';
-            }, 2000);
-        }
-
+        // Обновляем данные каждые 5 секунд
         setInterval(updateUsers, 5000);
         updateUsers();
     </script>
